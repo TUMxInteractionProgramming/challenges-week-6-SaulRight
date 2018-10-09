@@ -1,5 +1,20 @@
-/* start the external action and say hello */
-console.log("App is alive");
+$(document).ready(function() {
+    /* start the external action and say hello */
+    console.log("App is alive");
+    // onload functions
+    listChannels(compareNew);
+    loadEmojis();
+
+    console.log('App is initialized');
+
+    // counting chars in input
+    setCharCountListener();
+    // listen for enter in message
+    setFocusListeners();
+    // starting the timer function
+    myTimerFunction('start');
+});
+
 
 /** #10 global #array of channels #arr*/
 var channels = [
@@ -23,16 +38,37 @@ var currentLocation = {
     what3words: "shelf.jetted.purple"
 };
 
+function myTimerFunction(startTimer) {
+    if (startTimer === 'start') {
+        // start timer
+        var myTimer = setInterval(function() {
+            var arrayIndices = [];
+            $(currentChannel.messages).each(function(index, value) {
+                value.update();
+                if ( $.isEmptyObject(value.jQueryObject) ) {
+                    arrayIndices.push(index);
+                }
+            });
+            for(i = arrayIndices.length; i > 0; i--) {
+                currentChannel.messages.splice(arrayIndices[i-1], 1);
+                currentChannel.messageCount -= 1;
+                console.log('splice arrayIndices ', arrayIndices[i-1]);
+            }
+            showMessages();
+            console.log('Updating message elements...');
+        }, 10e3); //every ten seconds
+    } else {
+        // stop timer if necessary
+        clearInterval(myTimer);
+    }
+}
 /**
  * Switch channels name in the right app bar
  * @param channelObject
  */
-function switchChannel(channelObject) {
+function switchChannel(channelObject, channelElement) {
     // Log the channel switch
     console.log("Tuning in to channel", channelObject);
-
-    // #10 #new: switching channels aborts "create new channel"-mode
-    abortCreationMode();
 
     // Write the new channel to the right app bar using object property
     document.getElementById('channel-name').innerHTML = channelObject.name;
@@ -52,10 +88,13 @@ function switchChannel(channelObject) {
     /* highlight the selected #channel.
        This is inefficient (jQuery has to search all channel list items), but we'll change it later on */
     $('#channels li').removeClass('selected');
-    $('#channels li:contains(' + channelObject.name + ')').addClass('selected');
+    $(channelElement).addClass('selected');
 
     /* store selected channel in global variable */
     currentChannel = channelObject;
+
+    // #10 #new: switching channels aborts "create new channel"-mode
+    abortCreationMode();
 }
 
 /* liking a channel on #click */
@@ -69,8 +108,9 @@ function star() {
     currentChannel.starred = !currentChannel.starred;
 
     // toggle star also in list
-    $('#channels li:contains(' + currentChannel.name + ') .fa').removeClass('fas far');
-    $('#channels li:contains(' + currentChannel.name + ') .fa').addClass(currentChannel.starred ? 'fas' : 'far');
+    // $('#tab-bar .selected').trigger('click');
+    $('#channels .selected .fa-star').removeClass('fas far');
+    $('#channels .selected .fa-star').addClass(currentChannel.starred ? 'fas' : 'far');
 }
 
 /**
@@ -105,7 +145,21 @@ function loadEmojis() {
     var emojis = require('emojis-list');
     $('#emojis').empty();
     for (emoji in emojis) {
-        $('#emojis').append(emojis[emoji] + " ");
+        var emojiParagraph = $('<p></p>').html(emojis[emoji] + " ").on('click', function(){
+            var emojiStr = $(this).html();
+            emojiStr = emojiStr.split(' ');
+            var charCountStr = $('#char-count').html();
+            charCountStr = charCountStr.split('/');
+            if (parseInt(charCountStr[0]) <= 138) {
+                $('#message').val($('#message').val() + emojiStr[0]);
+                $('#message').trigger('input');
+                toggleEmojis();
+            } else {
+                alert('Message is not allowed to have more than 140 characters.');
+            }
+            
+        });
+        $('#emojis').append(emojiParagraph);
     }
 }
 
@@ -121,11 +175,28 @@ function Message(text) {
     this.longitude = currentLocation.longitude;
     // set dates
     this.createdOn = new Date() //now
-    this.expiresOn = new Date(Date.now() + 15 * 60 * 1000); // mins * secs * msecs
+    this.expiresOn = new Date(Date.now() + 1 * 20 * 1000); // mins * secs * msecs
     // set text
     this.text = text;
     // own message
     this.own = true;
+    this.jQueryObject = {};
+    this.update = function() {
+        this.jQueryObject.find('em').html(Math.round((this.expiresOn - Date.now()) / 60 / 1000 * 10 ) / 10 + ' min. left');
+        if ( (this.expiresOn - Date.now() < 3e5) && (this.expiresOn - Date.now() >= 1) ) {
+            this.jQueryObject.find('em').css('color', '#3F51B5' );
+        } else if ( this.expiresOn - Date.now() < 1 ) {
+            console.log(this);
+            this.jQueryObject.remove();
+            console.log('del');
+            //evtl über delete flag lösen
+            this.jQueryObject = {};
+            console.log(this);
+        } else {
+            this.jQueryObject.find('em').css('color', 'black' );
+        }
+    };
+
 }
 
 function sendMessage() {
@@ -150,13 +221,16 @@ function sendMessage() {
     currentChannel.messageCount+=1;
 
     // Adding the message to the messages-div
-    $('#messages').append(createMessageElement(message));
+    // $('#messages').append(createMessageElement(message));
+    currentChannel.jQueryObject = createMessageElement(message);
+    showMessages();
 
     // messages will scroll to a certain point if we apply a certain height, in this case the overall scrollHeight of the messages-div that increases with every message;
     $('#messages').scrollTop($('#messages').prop('scrollHeight'));
 
     // clear the #message input
     $('#message').val('');
+    $('#char-count').html('0/140');
 }
 
 /**
@@ -167,20 +241,23 @@ function sendMessage() {
 function createMessageElement(messageObject) {
     // Calculating the expiresIn-time from the expiresOn-property
     var expiresIn = Math.round((messageObject.expiresOn - Date.now()) / 1000 / 60);
-
     // Creating a message-element
-    return '<div class="message'+
-        //this dynamically adds #own to the #message, based on the
-        //ternary operator. We need () in order not to disrupt the return.
-        (messageObject.own ? ' own' : '') +
-        '">' +
-        '<h3><a href="http://w3w.co/' + messageObject.createdBy + '" target="_blank">'+
-        '<strong>' + messageObject.createdBy + '</strong></a>' +
-        messageObject.createdOn.toLocaleString() +
-        '<em>' + expiresIn + ' min. left</em></h3>' +
-        '<p>' + messageObject.text + '</p>' +
-        '<button class="accent">+5 min.</button>' +
-        '</div>';
+    var messageElement = $('<div><h3><a><strong></strong></a><em></em></h3><p></p><button></button></div>');
+    messageElement.addClass('message').addClass(messageObject.own ? 'own' : '')
+                  .find('a').attr({href: "http://w3w.co/" + messageObject.createdBy,
+                                   target: "_blank"})
+                  .end()
+                  .find('strong').html(messageObject.createdBy)
+                  .end()
+                  .find('em').before(messageObject.createdOn.toLocaleString())
+                             .html(expiresIn + ' min. left')
+                  .end()
+                  .find('p').html(messageObject.text)
+                  .end()
+                  .find('button').addClass('accent').html('+5 min.')
+                  .end();
+    messageObject.jQueryObject = messageElement;
+    return messageElement;
 }
 
 /* #10 Three #compare functions to #sort channels */
@@ -223,7 +300,11 @@ function listChannels(criterion) {
 
     /* #10 append channels from #array with a #for loop */
     for (i = 0; i < channels.length; i++) {
-        $('#channels ul').append(createChannelElement(channels[i]));
+        var liElement = createChannelElement(channels[i]);
+        $('#channels ul').append(liElement);
+        if (channels[i] === currentChannel) {
+            switchChannel(currentChannel, liElement);
+        }
     };
 }
 
@@ -309,7 +390,9 @@ function createChannelElement(channelObject) {
      */
 
     // create a channel
-    var channel = $('<li>').text(channelObject.name);
+    var channel = $('<li>').text(channelObject.name).click(function () {
+        switchChannel(channelObject, this);
+    });
 
     // create and append channel meta
     var meta = $('<span>').addClass('channel-meta').appendTo(channel);
@@ -354,4 +437,43 @@ function abortCreationMode() {
     $('#app-bar-create').removeClass('show');
     $('#button-create').hide();
     $('#button-send').show();
+    showMessages();
+}
+
+function showMessages() {
+    $('#messages').empty();
+    $.each(currentChannel.messages, function(index, value) {
+        // adding onclick listener
+        $(value.jQueryObject).click(function() {
+            value.expiresOn = new Date(value.expiresOn.getTime() + 3e5);
+            value.update();
+            console.log('click');
+            });
+        // Adding the message to the messages-div
+        $('#messages').append(value.jQueryObject);
+        value.update();
+    });
+    // // messages will scroll to a certain point if we apply a certain height, in this case the overall scrollHeight of the messages-div that increases with every message;
+    // $('#messages').scrollTop($('#messages').prop('scrollHeight'));
+}
+
+function setCharCountListener() {
+    $('#message').on('input', function() {
+        var inputStr = $('#message').val();
+        var charCount = inputStr.length;
+        $('#char-count').html(charCount + '/140');
+    });
+}
+
+function setFocusListeners() {
+    $('#message').on('focus', function() {
+        $('#message').on('keypress', function(event) {
+            if (event.which == 13 || event.keyCode == 13) {
+                sendMessage();
+            }
+        });        
+    });
+    $('#message').on('blur', function() {
+        $('#message').off('keypress');        
+    });
 }

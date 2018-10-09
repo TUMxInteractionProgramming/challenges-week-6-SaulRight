@@ -284,6 +284,10 @@ li.selected {
     display: none;
 }
 
+#emojis p {
+    display: inline;
+}
+
 /* input styles for font, border, and alignment */
 #chat-bar input {
     /* styles */
@@ -403,7 +407,7 @@ button {
     margin: 8px;
 
     background-color: white;
-    text-color: black;
+    color: black;
     border: none;
 
     text-transform: uppercase;
