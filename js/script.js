@@ -13,6 +13,8 @@ $(document).ready(function() {
     setFocusListeners();
     // starting the timer function
     myTimerFunction('start');
+
+    getLocation();
 });
 
 
@@ -33,10 +35,59 @@ currentChannel = sevencontinents;
 
 /** Store my current (sender) location */
 var currentLocation = {
-    latitude: 48.249586,
-    longitude: 11.634431,
-    what3words: "shelf.jetted.purple"
+    latitude: 0,
+    longitude: 0,
+    timestamp: 0,
+    what3words: "not.yet.received"
 };
+
+function getLocation() {
+    if ("geolocation" in navigator) {
+        console.log('geolocation is available.');
+      } else {
+        alert('Geolocation is not available in this browser!');
+      }
+      navigator.geolocation.getCurrentPosition(function(pos){
+        currentLocation.latitude = pos.coords.latitude;
+        currentLocation.longitude = pos.coords.longitude;
+        currentLocation.timestamp = pos.timestamp;
+        console.log('Position received: ', currentLocation.longitude, ', ',
+                        currentLocation.latitude, ' at ', new Date(currentLocation.timestamp).toLocaleString());
+        getW3WLocation();
+      },function(err){
+        switch(err.code){
+            case(1): //PERMISSION_DENIED
+                alert('Permission denied: ' + err.message);
+                break;
+            case(2): //POSITION_UNAVAILABLE
+                alert('Position unavailable: ' + err.message);
+                break;
+            case(3): //TIMEOUT
+                alert('Timeout: ' + err.message);
+        }
+      },{
+        enableHighAccuracy: true,
+        timeout: 10e3,
+        maximumAge: 0
+      });
+}
+
+function getW3WLocation() {
+    $.getJSON("https://api.what3words.com/v2/reverse?coords=" +
+                currentLocation.latitude + "%2C" +
+                currentLocation.longitude +
+                "&key=PMGO0NJB&lang=en&format=json&display=full",
+                function(data) {
+                    currentLocation.what3words = data.words;
+                    console.log(data);
+                }); 
+}
+
+function getChannels() {
+    $.getJSON("https://tumwlfe-mooc.srv.mwn.de:3131/channels", function(data) {
+        console.log(data);
+    });
+}
 
 function myTimerFunction(startTimer) {
     if (startTimer === 'start') {
